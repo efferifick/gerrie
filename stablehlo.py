@@ -1,15 +1,15 @@
+from xdsl.irdl import irdl_attr_definition
+from xdsl.ir import ParametrizedAttribute, TypeAttribute
+
 # Token types represent tokens, i.e. opaque values produced and consumed by
 # some operations. Tokens are used for imposing execution order on operations
 # as described in the Execution section.
-from xdsl.irdl import irdl_attr_definition
-from xdsl.ir import ParametrizedAttribute
-
 @irdl_attr_definition
-class TokenType(ParametrizedAttribute):
-    name = "token"
+class TokenType(ParametrizedAttribute, TypeAttribute):
+    name = "stablehlo.token"
 
 # Tensor types represent tensors, i.e. multidimensional arrays.
-from xdsl.dialects.builtin import TensorType, UnrankedTensorType
+from xdsl.dialects.builtin import TensorType
 
 # Element Types
 # Boolean type represents boolean values true and false.
@@ -90,16 +90,15 @@ StableHLOComplex : TypeAlias = (Complex32 | Complex64)
 StableHLOElementType : TypeAlias = (StableHLOBoolean | StableHLOSignedInteger | StableHLOUnsignedInteger | StableHLOFloat | StableHLOComplex)
 
 StableHLORankedTensor : TypeAlias = TensorType[StableHLOElementType]
-StableHLOUnrankedTensor : TypeAlias = UnrankedTensorType[StableHLOElementType]
-StableHLOTensor : TypeAlias = (StableHLORankedTensor | StableHLOUnrankedTensor)
+StableHLOTensor : TypeAlias = StableHLORankedTensor 
 
 from xdsl.irdl import AnyOf, IRDLOperation, irdl_op_definition, operand_def, prop_def, result_def
 from xdsl.dialects.builtin import DenseIntOrFPElementsAttr
 @irdl_op_definition
 class AbsOp(IRDLOperation):
     name = "stablehlo.abs"
-    operand = operand_def(StableHLORankedTensor)
-    result = result_def(StableHLORankedTensor)
+    operand = operand_def(StableHLOTensor)
+    result = result_def(StableHLOTensor)
 
     def __init__(self, operand, result_ty):
         super().__init__(operands=(operand,),
@@ -151,9 +150,9 @@ class TestAbsOp(unittest.TestCase):
 @irdl_op_definition
 class AddOp(IRDLOperation):
     name = "stablehlo.add"
-    lhs = operand_def(StableHLORankedTensor)
-    rhs = operand_def(StableHLORankedTensor)
-    result = result_def(StableHLORankedTensor)
+    lhs = operand_def(StableHLOTensor)
+    rhs = operand_def(StableHLOTensor)
+    result = result_def(StableHLOTensor)
 
     def __init__(self, lhs, rhs, result):
         super().__init__(operands=(lhs, rhs),
@@ -192,12 +191,81 @@ class TestAddOp(unittest.TestCase):
         with self.assertRaises(AssertionError, msg=AddOp.msgC1()):
             addOp.C1()
 
+from xdsl.irdl import var_operand_def
+@irdl_op_definition
+class AfterAllOp(IRDLOperation):
+    name = "stablehlo.after_all"
+    inputs = var_operand_def(TokenType)
+    result = result_def(TokenType)
+
+    def __init__(self, inputs, result):
+        super().__init__(operands=[inputs],
+                         result_types=(result,))
+
+class TestAfterAllOp(unittest.TestCase):
+    def test_after_all(self):
+        from xdsl.ir import Block
+        tokentype = TokenType()
+        block = Block([], arg_types=[tokentype, tokentype])
+        tokenvals = block.args
+        afterallop = AfterAllOp(tokenvals, tokentype)
+        observed = str(afterallop)
+        expected = '%0 = "stablehlo.after_all"(%1, %2) : (!stablehlo.token, !stablehlo.token) -> !stablehlo.token'
+        assert observed == expected
+
+from xdsl.ir import SSAValue
+from xdsl.irdl import VarOperand, var_result_def
+from collections.abc import Sequence
+ReplicaGroupsType : TypeAlias = TensorType[SI64]
+
+@irdl_op_definition
+class AllGatherOp(IRDLOperation):
+    name = "stablehlo.all_gather"
+    inputs: VarOperand = var_operand_def(StableHLOTensor)
+    all_gather_dim = prop_def(SI64)
+    replica_groups = prop_def(ReplicaGroupsType)
+    channel_id = prop_def(SI64)
+    use_global_device_ids = prop_def(I1)
+    result = var_result_def(StableHLOTensor)
+
+    def __init__(self, operands : Sequence[SSAValue], all_gather_dim, replica_groups, channel_id, use_global_device_ids, result):
+        properties = {"all_gather_dim" : all_gather_dim,
+                      "replica_groups" : replica_groups,
+                      "channel_id" : channel_id,
+                      "use_global_device_ids" : use_global_device_ids}
+        super().__init__(operands=(operands,),
+                         result_types=(result,),
+                         properties=properties)
+
+    @staticmethod
+    def msgC1():
+        return "0 <= all_gather_dim < rank(operands...)"
+
+    def C1(self):
+        """Missing verification"""
+
+    def verify_(self):
+        self.C1()
+
+from xdsl.dialects.builtin import IntegerAttr
+class TestAllGatherOp(unittest.TestCase):
+    def test_all_gather_op(self):
+        ty = TensorType(si64, [1])
+        val = DenseIntOrFPElementsAttr.from_list(ty, [1])
+        c1 = ConstantOp(val, ty)
+        si_c1 = IntegerAttr(1, si64)
+        i1_c1 = IntegerAttr(1, i1)
+        all_gather_op = AllGatherOp([c1], si_c1, val, si_c1, i1_c1, [ty])
+
+# ALL_REDUCE
+# ALL_TO_ALL
+
 
 @irdl_op_definition
 class ConstantOp(IRDLOperation):
     name = "stablehlo.constant"
     value = prop_def(DenseIntOrFPElementsAttr)
-    output = result_def(StableHLORankedTensor)
+    output = result_def(StableHLOTensor)
 
     def __init__(self, value, tensor_type):
         properties = { "value" : value }
