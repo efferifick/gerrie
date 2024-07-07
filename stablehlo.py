@@ -55,8 +55,8 @@ from xdsl.dialects.builtin import f16, f32, f64
 # complex types are complex<f32> (both parts are of type f32)
 # and complex<f64> (both parts are of type f64).
 from xdsl.dialects.builtin import ComplexType
-complex32 = ComplexType(f32)
-complex64 = ComplexType(f64)
+complexf32 = ComplexType(f32)
+complexf64 = ComplexType(f64)
 
 
 from typing import Annotated, TypeAlias
@@ -214,7 +214,7 @@ class TestAfterAllOp(unittest.TestCase):
         assert observed == expected
 
 from xdsl.ir import SSAValue
-from xdsl.irdl import VarOperand, var_result_def
+from xdsl.irdl import Operand, OpResult, VarOperand, var_result_def
 from collections.abc import Sequence
 ReplicaGroupsType : TypeAlias = TensorType[SI64]
 
@@ -260,6 +260,86 @@ class TestAllGatherOp(unittest.TestCase):
 # ALL_REDUCE
 # ALL_TO_ALL
 
+TensorIntegerType : TypeAlias = TensorType[StableHLOBoolean | StableHLOSignedInteger | StableHLOUnsignedInteger]
+@irdl_op_definition
+class AndOp(IRDLOperation):
+    name = "stablehlo.and"
+    lhs : Operand = operand_def(TensorIntegerType)
+    rhs : Operand = operand_def(TensorIntegerType)
+    result : OpResult = result_def(TensorIntegerType)
+
+    def __init__(self, lhs, rhs, result):
+        super().__init__(operands=(lhs, rhs),
+                         result_types=(result,))
+    def verify_(self):
+        assert self.lhs.type == self.rhs.type
+        assert self.rhs.type == self.result.type
+
+class TestAndOp(unittest.TestCase):
+    def test_and_op(self):
+        ty = TensorType(si64, [1])
+        val = DenseIntOrFPElementsAttr.from_list(ty, [1])
+        c1 = ConstantOp(val, ty)
+        assert AndOp(c1, c1, ty)
+
+TensorFloatAndComplex : TypeAlias = TensorType[StableHLOFloat | StableHLOComplex]
+@irdl_op_definition
+class Atan2Op(IRDLOperation):
+    name = "stablehlo.atan2"
+    lhs = operand_def(TensorFloatAndComplex)
+    rhs = operand_def(TensorFloatAndComplex)
+    result = result_def(TensorFloatAndComplex)
+
+    def __init__(self, lhs, rhs, result):
+        super().__init__(operands=(lhs, rhs),
+                         result_types=(result,))
+    def verify_(self):
+        assert self.lhs.type == self.rhs.type
+        assert self.rhs.type == self.result.type
+
+class TestAtan2Op(unittest.TestCase):
+    def test_atan2_op(self):
+        ty = TensorType(f64, [1])
+        val = DenseIntOrFPElementsAttr.from_list(ty, [1])
+        c1 = ConstantOp(val, ty)
+        assert Atan2Op(c1, c1, ty)
+
+# BATCH_NORM_GRAD
+# BATCH_NORM_INFERENCE
+# BATCH_NORM_TRAINING
+
+@irdl_op_definition
+class BitcastConvertOp(IRDLOperation):
+    name = "stablehlo.bitcast_convert"
+    input = operand_def(StableHLOTensor)
+    result = result_def(StableHLOTensor)
+
+    def __init__(self, input, result):
+        super().__init__(operands=(input,),
+                         result_types=(result,))
+
+class TestBitcastConvertOp(unittest.TestCase):
+    def test_bitcast_convert_op(self):
+        ty = TensorType(f64, [1])
+        val = DenseIntOrFPElementsAttr.from_list(ty, [1])
+        c1 = ConstantOp(val, ty)
+        assert BitcastConvertOp(c1, ty)
+
+# BROADCAST_IN_DIM
+
+TensorSI32 : TypeAlias = TensorType[SI32]
+from xdsl.irdl import VarRegion, var_region_def
+@irdl_op_definition
+class CaseOp(IRDLOperation):
+    name = "stablehlo.case"
+    index = operand_def(TensorSI32)
+    branches : VarRegion = var_region_def()
+    results = var_result_def(StableHLOTensor | TokenType)
+
+    def __init__(self, index, branches, results):
+        super().__init__(operands=(index,),
+                         result_types=(results,),
+                         regions=(branches,))
 
 @irdl_op_definition
 class ConstantOp(IRDLOperation):
@@ -291,6 +371,23 @@ class TestConstantOp(unittest.TestCase):
         op = ConstantOp(val, ty2)
         with self.assertRaises(AssertionError):
             op.verify_()
+
+from xdsl.ir import Dialect
+
+StableHLO = Dialect(
+        "stablehlo",
+        [
+            AbsOp,
+            AddOp,
+            AfterAllOp,
+            AllGatherOp,
+            AndOp,
+            Atan2Op,
+            BitcastConvertOp,
+            CaseOp,
+            ConstantOp
+        ]
+    )
 
 if "__main__" == __name__:
     unittest.main()
