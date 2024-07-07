@@ -2,6 +2,7 @@ import functools
 from py2ty import create_tracers
 from pennylane import pytrees
 
+
 def trace(callable):
 
     @functools.wraps(callable)

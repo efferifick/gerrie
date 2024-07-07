@@ -1,54 +1,3 @@
-#   ####### #     # ######  #######       #    #       ###    #     #####  #######  #####
-#      #     #   #  #     # #            # #   #        #    # #   #     # #       #     #
-#      #      # #   #     # #           #   #  #        #   #   #  #       #       #
-#      #       #    ######  #####      #     # #        #  #     #  #####  #####    #####
-#      #       #    #       #          ####### #        #  #######       # #             #
-#      #       #    #       #          #     # #        #  #     # #     # #       #     #
-#      #       #    #       #######    #     # ####### ### #     #  #####  #######  #####
-
-from typing import Annotated, TypeAlias
-
-from eff_types import TokenType
-from eff_types import IntegerType
-from eff_types import i1
-from eff_types import si2, si4, si8, si16, si32, si64
-from eff_types import ui2, ui4, ui8, ui16, ui32, ui64
-from eff_types import BFloat16Type, Float16Type, Float32Type, Float64Type
-from eff_types import bf16, f16, f32, f64
-from eff_types import ComplexType
-from eff_types import complexf32, complexf64
-from eff_types import TensorType
-
-I1 = Annotated[IntegerType, i1]
-StableHLOBoolean : TypeAlias = (I1)
-
-SI2  = Annotated[IntegerType, si2]
-SI4  = Annotated[IntegerType, si4]
-SI8  = Annotated[IntegerType, si8]
-SI16 = Annotated[IntegerType, si16]
-SI32 = Annotated[IntegerType, si32]
-SI64 = Annotated[IntegerType, si64]
-StableHLOSignedInteger : TypeAlias = (SI2 | SI4 | SI8 | SI32 | SI64)
-
-UI2  = Annotated[IntegerType, ui2]
-UI4  = Annotated[IntegerType, ui4]
-UI8  = Annotated[IntegerType, ui8]
-UI16 = Annotated[IntegerType, ui16]
-UI32 = Annotated[IntegerType, ui32]
-UI64 = Annotated[IntegerType, ui64]
-StableHLOUnsignedInteger : TypeAlias = (UI2 | UI4 | UI8 | UI32 | UI64)
-
-
-StableHLOFloat : TypeAlias = (BFloat16Type | Float16Type | Float32Type | Float64Type)
-
-Complex32 = Annotated[ComplexType, f32]
-Complex64 = Annotated[ComplexType, f64]
-
-StableHLOComplex : TypeAlias = (Complex32 | Complex64)
-StableHLOElementType : TypeAlias = (StableHLOBoolean | StableHLOSignedInteger | StableHLOUnsignedInteger | StableHLOFloat | StableHLOComplex)
-
-StableHLORankedTensor : TypeAlias = TensorType[StableHLOElementType]
-StableHLOTensor : TypeAlias = StableHLORankedTensor 
 
 #   ####### ######  ####### ######     #    ####### ### ####### #     #  #####
 #   #     # #     # #       #     #   # #      #     #  #     # ##    # #     #
@@ -61,10 +10,29 @@ StableHLOTensor : TypeAlias = StableHLORankedTensor
 from collections.abc import Sequence
 import unittest
 
-from xdsl.irdl import AnyOf, IRDLOperation, Operand, OpResult, VarOperand, VarRegion
+from xdsl.ir import SSAValue
+from xdsl.irdl import IRDLOperation, Operand, OpResult, VarOperand, VarRegion
 from xdsl.irdl import irdl_op_definition, operand_def, prop_def, region_def, result_def, var_operand_def, var_region_def, var_result_def
 from xdsl.dialects.builtin import DenseIntOrFPElementsAttr, IntegerAttr
-from xdsl.ir import SSAValue
+from xdsl.traits import IsTerminator
+
+from eff_type_aliases import TypeAlias
+
+from eff_type_aliases import TensorType
+from eff_type_aliases import I1
+from eff_type_aliases import SI2, SI4, SI8, SI16, SI32, SI64
+from eff_type_aliases import UI2, UI4, UI8, UI16, UI32, UI64
+from eff_type_aliases import BFloat16Type
+from eff_type_aliases import Float16Type, Float32Type, Float64Type
+
+from eff_type_aliases import TokenType
+from eff_type_aliases import StableHLOBoolean
+from eff_type_aliases import StableHLOSignedInteger, StableHLOUnsignedInteger
+from eff_type_aliases import StableHLOFloat
+from eff_type_aliases import StableHLOComplex
+from eff_type_aliases import StableHLOElementType
+from eff_type_aliases import StableHLOTensor
+
 
 @irdl_op_definition
 class AbsOp(IRDLOperation):
@@ -92,6 +60,7 @@ class AbsOp(IRDLOperation):
 
 class TestAbsOp(unittest.TestCase):
     def test_abs_op(self):
+        from eff_types import si64
         ty = TensorType(si64, [1])
         val = DenseIntOrFPElementsAttr.from_list(ty, [1])
         one = ConstantOp(val, ty)
@@ -101,6 +70,7 @@ class TestAbsOp(unittest.TestCase):
         assert expected == observed
 
     def test_constraint_same_shapes(self):
+        from eff_types import si64
         ty = TensorType(si64, [1])
         val = DenseIntOrFPElementsAttr.from_list(ty, [1])
         one = ConstantOp(val, ty)
@@ -110,6 +80,7 @@ class TestAbsOp(unittest.TestCase):
             absop.verify_()
 
     def test_constraint_same_etype(self):
+        from eff_types import si32, si64
         ty = TensorType(si64, [1])
         val = DenseIntOrFPElementsAttr.from_list(ty, [1])
         one = ConstantOp(val, ty)
@@ -144,6 +115,7 @@ class AddOp(IRDLOperation):
 
 class TestAddOp(unittest.TestCase):
     def test_add_op(self):
+        from eff_types import si64
         ty = TensorType(si64, [1])
         val = DenseIntOrFPElementsAttr.from_list(ty, [1])
         c1 = ConstantOp(val, ty)
@@ -153,6 +125,7 @@ class TestAddOp(unittest.TestCase):
         assert expected == observed
 
     def test_bad_type(self):
+        from eff_types import si64
         ty = TensorType(si64, [1])
         val = DenseIntOrFPElementsAttr.from_list(ty, [1])
         c1 = ConstantOp(val, ty)
@@ -215,6 +188,7 @@ class AllGatherOp(IRDLOperation):
 
 class TestAllGatherOp(unittest.TestCase):
     def test_all_gather_op(self):
+        from eff_types import i1, si64
         ty = TensorType(si64, [1])
         val = DenseIntOrFPElementsAttr.from_list(ty, [1])
         c1 = ConstantOp(val, ty)
@@ -242,6 +216,7 @@ class AndOp(IRDLOperation):
 
 class TestAndOp(unittest.TestCase):
     def test_and_op(self):
+        from eff_types import si64
         ty = TensorType(si64, [1])
         val = DenseIntOrFPElementsAttr.from_list(ty, [1])
         c1 = ConstantOp(val, ty)
@@ -264,6 +239,7 @@ class Atan2Op(IRDLOperation):
 
 class TestAtan2Op(unittest.TestCase):
     def test_atan2_op(self):
+        from eff_types import f64
         ty = TensorType(f64, [1])
         val = DenseIntOrFPElementsAttr.from_list(ty, [1])
         c1 = ConstantOp(val, ty)
@@ -285,6 +261,7 @@ class BitcastConvertOp(IRDLOperation):
 
 class TestBitcastConvertOp(unittest.TestCase):
     def test_bitcast_convert_op(self):
+        from eff_types import f64
         ty = TensorType(f64, [1])
         val = DenseIntOrFPElementsAttr.from_list(ty, [1])
         c1 = ConstantOp(val, ty)
@@ -297,7 +274,7 @@ TensorSI32 : TypeAlias = TensorType[SI32]
 class CaseOp(IRDLOperation):
     name = "stablehlo.case"
     index = operand_def(TensorSI32)
-    branches : VarRegion = var_region_def()
+    branches : VarRegion = var_region_def("single_block")
     results = var_result_def(StableHLOTensor | TokenType)
 
     def __init__(self, index, branches, results):
@@ -323,14 +300,23 @@ TensorI1 : TypeAlias = TensorType[I1]
 class IfOp(IRDLOperation):
     name = "stablehlo.if"
     pred = operand_def(TensorI1)
-    true_branch = region_def()
-    false_branch = region_def()
+    true_branch = region_def("single_block")
+    false_branch = region_def("single_block")
     results = var_result_def(StableHLOTensor | TokenType)
 
     def __init__(self, pred, true_branch, false_branch, results):
         super().__init__(operands=(pred,),
                          result_types=(results,),
                          regions=(true_branch, false_branch),)
+
+@irdl_op_definition
+class ReturnOp(IRDLOperation):
+    name = "stablehlo.return"
+    input = var_operand_def(StableHLOTensor)
+    traits = frozenset([IsTerminator()])
+
+    def __init__(self, input):
+        super().__init__(operands=(input,))
 
 @irdl_op_definition
 class ConstantOp(IRDLOperation):
@@ -348,6 +334,7 @@ class ConstantOp(IRDLOperation):
 
 class TestConstantOp(unittest.TestCase):
     def test_constant_op(self):
+        from eff_types import si64
         ty = TensorType(si64, [1])
         val = DenseIntOrFPElementsAttr.from_list(ty, [1])
         expected = """%0 = "stablehlo.constant"() <{"value" = dense<1> : tensor<1xsi64>}> : () -> tensor<1xsi64>"""
@@ -355,6 +342,7 @@ class TestConstantOp(unittest.TestCase):
         assert expected == observed
 
     def test_raises_error(self):
+        from eff_types import si64
         ty = TensorType(si64, [1])
         val = DenseIntOrFPElementsAttr.from_list(ty, [1])
         expected = """%0 = "stablehlo.constant"() <{"value" = dense<1> : tensor<1xsi64>}> : () -> tensor<1xsi64>"""
@@ -385,7 +373,8 @@ StableHLO = Dialect(
             BitcastConvertOp,
             CaseOp,
             ConstantOp,
-            ConvertOp
+            ConvertOp,
+            ReturnOp,
         ]
     )
 

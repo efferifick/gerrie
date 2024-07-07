@@ -5,11 +5,11 @@ import builtins
 import numpy
 
 from xdsl.dialects.builtin import i32, i64
-from stablehlo import i1
-from stablehlo import si2, si4, si8, si16, si32, si64
-from stablehlo import ui2, ui4, ui8, ui16, ui32, ui64
-from stablehlo import f16, f32, f64
-from stablehlo import complexf32, complexf64
+from eff_types import i1
+from eff_types import si2, si4, si8, si16, si32, si64
+from eff_types import ui2, ui4, ui8, ui16, ui32, ui64
+from eff_types import f16, f32, f64
+from eff_types import complexf32, complexf64
 from stablehlo import TensorType
 
 def convert_python_type_to_mlir_type(pytype):

@@ -15,13 +15,14 @@ from stablehlo import AbsOp, AddOp, AndOp, ConvertOp
 
 class StableHLOTracer(Tracer):
     def get_or_create_tracer(self, val):
-        # All python values will be converted
+        # TODO: All python values will be converted
         # to tensors.
         match val:
             case StableHLOTracer(): return val
         raise ValueError("TODO")
 
     def cast(self, val, ty):
+        # TODO: Broadcast
         otherTy = val.type
         match otherTy == ty:
             case True: return val
