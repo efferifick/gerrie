@@ -1,65 +1,24 @@
-from xdsl.irdl import irdl_attr_definition
-from xdsl.ir import ParametrizedAttribute, TypeAttribute
-
-# Token types represent tokens, i.e. opaque values produced and consumed by
-# some operations. Tokens are used for imposing execution order on operations
-# as described in the Execution section.
-@irdl_attr_definition
-class TokenType(ParametrizedAttribute, TypeAttribute):
-    name = "stablehlo.token"
-
-# Tensor types represent tensors, i.e. multidimensional arrays.
-from xdsl.dialects.builtin import TensorType
-
-# Element Types
-# Boolean type represents boolean values true and false.
-# BooleanType ::= 'i1'
-from xdsl.dialects.builtin import i1
-
-# Integer types can be either signed (si) or unsigned (ui)
-# IntegerType ::= SignedIntegerType | UnsignedIntegerType
-# SignedIntegerType ::= 'si2' | 'si4' | 'si8' | 'si16' | 'si32' | 'si64'
-# UnsignedIntegerType ::= 'ui2' | 'ui4' | 'ui8' | 'ui16' | 'ui32' | 'ui64'
-from xdsl.dialects.builtin import IntegerType, Signedness
-# and have one of the supported bit widths (2, 4, 8, 16, 32 or 64)
-
-si2  = IntegerType(2,  Signedness.SIGNED)
-si4  = IntegerType(4,  Signedness.SIGNED)
-si8  = IntegerType(8,  Signedness.SIGNED)
-si16 = IntegerType(16, Signedness.SIGNED)
-si32 = IntegerType(32, Signedness.SIGNED)
-si64 = IntegerType(64, Signedness.SIGNED)
-
-
-ui2  = IntegerType(2,  Signedness.UNSIGNED)
-ui4  = IntegerType(4,  Signedness.UNSIGNED)
-ui8  = IntegerType(8,  Signedness.UNSIGNED)
-ui16 = IntegerType(16, Signedness.UNSIGNED)
-ui32 = IntegerType(32, Signedness.UNSIGNED)
-ui64 = IntegerType(64, Signedness.UNSIGNED)
-
-
-# Floating-point types can be one of the following: 
-# bf16 type corresponding to the bfloat16 format described in BFloat16:
-# The secret to high performance on Cloud TPUs.
-from xdsl.dialects.builtin import bf16
-
-# f16, f32 and f64 types corresponding to respectively
-# binary16 ("half precision"), binary32 ("single precision")
-# and binary64 ("double precision") formats described in the IEEE 754 standard.
-from xdsl.dialects.builtin import f16, f32, f64
-
-
-# Complex types represent complex values that have a real part
-# and an imaginary part of the same element type. Supported
-# complex types are complex<f32> (both parts are of type f32)
-# and complex<f64> (both parts are of type f64).
-from xdsl.dialects.builtin import ComplexType
-complexf32 = ComplexType(f32)
-complexf64 = ComplexType(f64)
-
+#   ####### #     # ######  #######       #    #       ###    #     #####  #######  #####
+#      #     #   #  #     # #            # #   #        #    # #   #     # #       #     #
+#      #      # #   #     # #           #   #  #        #   #   #  #       #       #
+#      #       #    ######  #####      #     # #        #  #     #  #####  #####    #####
+#      #       #    #       #          ####### #        #  #######       # #             #
+#      #       #    #       #          #     # #        #  #     # #     # #       #     #
+#      #       #    #       #######    #     # ####### ### #     #  #####  #######  #####
 
 from typing import Annotated, TypeAlias
+
+from eff_types import TokenType
+from eff_types import IntegerType
+from eff_types import i1
+from eff_types import si2, si4, si8, si16, si32, si64
+from eff_types import ui2, ui4, ui8, ui16, ui32, ui64
+from eff_types import BFloat16Type, Float16Type, Float32Type, Float64Type
+from eff_types import bf16, f16, f32, f64
+from eff_types import ComplexType
+from eff_types import complexf32, complexf64
+from eff_types import TensorType
+
 I1 = Annotated[IntegerType, i1]
 StableHLOBoolean : TypeAlias = (I1)
 
@@ -79,7 +38,6 @@ UI32 = Annotated[IntegerType, ui32]
 UI64 = Annotated[IntegerType, ui64]
 StableHLOUnsignedInteger : TypeAlias = (UI2 | UI4 | UI8 | UI32 | UI64)
 
-from xdsl.dialects.builtin import BFloat16Type, Float16Type, Float32Type, Float64Type
 
 StableHLOFloat : TypeAlias = (BFloat16Type | Float16Type | Float32Type | Float64Type)
 
@@ -92,8 +50,22 @@ StableHLOElementType : TypeAlias = (StableHLOBoolean | StableHLOSignedInteger | 
 StableHLORankedTensor : TypeAlias = TensorType[StableHLOElementType]
 StableHLOTensor : TypeAlias = StableHLORankedTensor 
 
-from xdsl.irdl import AnyOf, IRDLOperation, irdl_op_definition, operand_def, prop_def, result_def
-from xdsl.dialects.builtin import DenseIntOrFPElementsAttr
+#   ####### ######  ####### ######     #    ####### ### ####### #     #  #####
+#   #     # #     # #       #     #   # #      #     #  #     # ##    # #     #
+#   #     # #     # #       #     #  #   #     #     #  #     # # #   # #
+#   #     # ######  #####   ######  #     #    #     #  #     # #  #  #  #####
+#   #     # #       #       #   #   #######    #     #  #     # #   # #       #
+#   #     # #       #       #    #  #     #    #     #  #     # #    ## #     #
+#   ####### #       ####### #     # #     #    #    ### ####### #     #  #####
+
+from collections.abc import Sequence
+import unittest
+
+from xdsl.irdl import AnyOf, IRDLOperation, Operand, OpResult, VarOperand, VarRegion
+from xdsl.irdl import irdl_op_definition, operand_def, prop_def, region_def, result_def, var_operand_def, var_region_def, var_result_def
+from xdsl.dialects.builtin import DenseIntOrFPElementsAttr, IntegerAttr
+from xdsl.ir import SSAValue
+
 @irdl_op_definition
 class AbsOp(IRDLOperation):
     name = "stablehlo.abs"
@@ -118,7 +90,6 @@ class AbsOp(IRDLOperation):
         operandety = operandty.element_type
         assert resultety == operandety, msg2
 
-import unittest
 class TestAbsOp(unittest.TestCase):
     def test_abs_op(self):
         ty = TensorType(si64, [1])
@@ -191,7 +162,6 @@ class TestAddOp(unittest.TestCase):
         with self.assertRaises(AssertionError, msg=AddOp.msgC1()):
             addOp.C1()
 
-from xdsl.irdl import var_operand_def
 @irdl_op_definition
 class AfterAllOp(IRDLOperation):
     name = "stablehlo.after_all"
@@ -213,11 +183,7 @@ class TestAfterAllOp(unittest.TestCase):
         expected = '%0 = "stablehlo.after_all"(%1, %2) : (!stablehlo.token, !stablehlo.token) -> !stablehlo.token'
         assert observed == expected
 
-from xdsl.ir import SSAValue
-from xdsl.irdl import Operand, OpResult, VarOperand, var_result_def
-from collections.abc import Sequence
 ReplicaGroupsType : TypeAlias = TensorType[SI64]
-
 @irdl_op_definition
 class AllGatherOp(IRDLOperation):
     name = "stablehlo.all_gather"
@@ -247,7 +213,6 @@ class AllGatherOp(IRDLOperation):
     def verify_(self):
         self.C1()
 
-from xdsl.dialects.builtin import IntegerAttr
 class TestAllGatherOp(unittest.TestCase):
     def test_all_gather_op(self):
         ty = TensorType(si64, [1])
@@ -328,7 +293,6 @@ class TestBitcastConvertOp(unittest.TestCase):
 # BROADCAST_IN_DIM
 
 TensorSI32 : TypeAlias = TensorType[SI32]
-from xdsl.irdl import VarRegion, var_region_def
 @irdl_op_definition
 class CaseOp(IRDLOperation):
     name = "stablehlo.case"
@@ -353,6 +317,20 @@ class ConvertOp(IRDLOperation):
 
     def verify_(self):
         assert self.input.type.shape == self.result.type.shape
+
+TensorI1 : TypeAlias = TensorType[I1]
+@irdl_op_definition
+class IfOp(IRDLOperation):
+    name = "stablehlo.if"
+    pred = operand_def(TensorI1)
+    true_branch = region_def()
+    false_branch = region_def()
+    results = var_result_def(StableHLOTensor | TokenType)
+
+    def __init__(self, pred, true_branch, false_branch, results):
+        super().__init__(operands=(pred,),
+                         result_types=(results,),
+                         regions=(true_branch, false_branch),)
 
 @irdl_op_definition
 class ConstantOp(IRDLOperation):
@@ -385,6 +363,14 @@ class TestConstantOp(unittest.TestCase):
         with self.assertRaises(AssertionError):
             op.verify_()
 
+#   ######  ###    #    #       #######  #####  #######
+#   #     #  #    # #   #       #       #     #    #
+#   #     #  #   #   #  #       #       #          #
+#   #     #  #  #     # #       #####   #          #
+#   #     #  #  ####### #       #       #          #
+#   #     #  #  #     # #       #       #     #    #
+#   ######  ### #     # ####### #######  #####     #
+
 from xdsl.ir import Dialect
 
 StableHLO = Dialect(
@@ -398,7 +384,8 @@ StableHLO = Dialect(
             Atan2Op,
             BitcastConvertOp,
             CaseOp,
-            ConstantOp
+            ConstantOp,
+            ConvertOp
         ]
     )
 
