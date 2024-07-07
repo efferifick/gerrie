@@ -10,30 +10,51 @@ class Tracer:
     def type(self):
         return self.ssaval.type
 
-    def get_or_create_tracer(self, val): ...
-    def cast(self, val, ty): ...
-
-from stablehlo import AddOp
+from stablehlo import TensorType
+from stablehlo import AbsOp, AddOp, AndOp, ConvertOp
 
 class StableHLOTracer(Tracer):
     def get_or_create_tracer(self, val):
         # All python values will be converted
         # to tensors.
-        from py2ty import create_tracers
         match val:
             case StableHLOTracer(): return val
-            case _: return create_tracers(val)
+        raise ValueError("TODO")
 
     def cast(self, val, ty):
         otherTy = val.type
         match otherTy == ty:
             case True: return val
-        msg = "TODO"
-        raise ValueError(msg)
+        raise ValueError("TODO")
 
-    def __add__(self, other):
+    def unop(self, unop):
+        ssaret = unop(self.ssaval, self.type)
+        ssaret.verify_()
+        return StableHLOTracer(ssaret.result)
+
+    def binop(self, binop, other):
         other_tracer = self.get_or_create_tracer(other)
         casted = self.cast(other_tracer, self.type)
         otherval = casted.ssaval
-        ssaret = AddOp(self.ssaval, otherval, self.type)
-        return Tracer(ssaret.result)
+        ssaret = binop(self.ssaval, otherval, self.type)
+        ssaret.verify_()
+        return StableHLOTracer(ssaret.result)
+
+    def __abs__(self):
+        return self.unop(AbsOp)
+
+    def __and__(self, other):
+        return self.binop(AndOp, other)
+
+    def __add__(self, other):
+        return self.binop(AddOp, other)
+
+    def astype(self, dtype):
+        from py2ty import convert_numpy_dtype_to_mlir_type
+        e_ty = convert_numpy_dtype_to_mlir_type(dtype)
+        old_type = self.type
+        c_ty = TensorType(e_ty, old_type.shape)
+        convertop = ConvertOp(self.ssaval, c_ty)
+        convertop.verify_()
+        return StableHLOTracer(convertop.result)
+

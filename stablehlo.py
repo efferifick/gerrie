@@ -169,7 +169,7 @@ class AddOp(IRDLOperation):
         assert self.lhs.type == self.result.type, AddOp.msgC1()
 
     def verify_(self):
-        C1(self)
+        self.C1()
 
 class TestAddOp(unittest.TestCase):
     def test_add_op(self):
@@ -340,6 +340,19 @@ class CaseOp(IRDLOperation):
         super().__init__(operands=(index,),
                          result_types=(results,),
                          regions=(branches,))
+
+@irdl_op_definition
+class ConvertOp(IRDLOperation):
+    name = "stablehlo.convert"
+    input = operand_def(StableHLOTensor)
+    result = result_def(StableHLOTensor)
+
+    def __init__(self, input, result):
+        super().__init__(operands=(input,),
+                         result_types=(result,))
+
+    def verify_(self):
+        assert self.input.type.shape == self.result.type.shape
 
 @irdl_op_definition
 class ConstantOp(IRDLOperation):

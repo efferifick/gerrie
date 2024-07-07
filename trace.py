@@ -55,16 +55,16 @@ class TestTrace(unittest.TestCase):
 
     def test_call_tracer(self):
 
+        import numpy
         @trace
         def identity(x, y):
-            return x + y
+            z = x + abs(y)
+            z2 = z & z
+            return z2.astype(numpy.float32)
 
-        import numpy
-        one = numpy.array(1.0)
+        one = numpy.array(1)
         x, _ = identity(one, one)
-
-
-
+        print(x)
 
 if "__main__" == __name__:
     unittest.main()
