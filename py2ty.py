@@ -5,7 +5,7 @@ import builtins
 import numpy
 
 from xdsl.dialects.builtin import i32, i64
-from eff_types import i1
+from eff_types import i1, i64
 from eff_types import si2, si4, si8, si16, si32, si64
 from eff_types import ui2, ui4, ui8, ui16, ui32, ui64
 from eff_types import f16, f32, f64
@@ -40,7 +40,7 @@ def convert_numpy_dtype_to_mlir_type(dtp):
         case numpy.uint16     | numpy.ushort  : return ui16
         case numpy.int32      | numpy.intc    : return si32
         case numpy.uint32     | numpy.uintc   : return ui32
-        case numpy.int64                      : return si64
+        case numpy.int64                      : return i64
         case numpy.uint64                     : return ui64
         case numpy.float16    | numpy.half    : return f16
         case numpy.float32    | numpy.single  : return f32

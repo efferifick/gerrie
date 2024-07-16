@@ -57,15 +57,25 @@ class TestTrace(unittest.TestCase):
     def test_call_tracer(self):
 
         import numpy
+        from eff_numpy import cond
         @trace
-        def identity(x, y):
-            z = x + abs(y)
-            z2 = z & z
-            return z2.astype(numpy.float32)
+        def main(x):
+            return x + x
 
-        one = numpy.array(1)
-        x, _ = identity(one, one)
+        one = numpy.array(1, dtype=numpy.int64)
+        x, shape = main(one)
         print(x)
+        import jax
+        from jax._src.interpreters import mlir
+        module = mlir.ir.Module.parse(str(x), context=mlir.make_ir_context())
+        bytecode = mlir.module_to_bytecode(module)
+        client = jax._src.xla_bridge.backends()["cpu"]
+        loaded = client.compile(bytecode)
+        jax.config.update("jax_enable_x64", True)
+        a = jax.numpy.array(1000, dtype=jax.numpy.int64)
+        flat_data = loaded.execute([a])
+        out = pytrees.unflatten(flat_data, shape)
+        print(out)
 
 if "__main__" == __name__:
     unittest.main()

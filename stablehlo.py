@@ -302,7 +302,7 @@ class IfOp(IRDLOperation):
     pred = operand_def(TensorI1)
     true_branch = region_def("single_block")
     false_branch = region_def("single_block")
-    results = var_result_def(StableHLOTensor | TokenType)
+    outputs = var_result_def(StableHLOTensor | TokenType)
 
     def __init__(self, pred, true_branch, false_branch, results):
         super().__init__(operands=(pred,),
