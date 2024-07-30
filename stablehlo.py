@@ -375,6 +375,9 @@ StableHLO = Dialect(
             ConstantOp,
             ConvertOp,
             ReturnOp,
+        ],
+        [
+            TokenType
         ]
     )
 
