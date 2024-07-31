@@ -38,12 +38,12 @@ si16 = IntegerType(16, Signedness.SIGNED)
 si32 = IntegerType(32, Signedness.SIGNED)
 si64 = IntegerType(64, Signedness.SIGNED)
 
-i2  = IntegerType(2,  Signedness.UNSIGNED)
-i4  = IntegerType(4,  Signedness.UNSIGNED)
-i8  = IntegerType(8,  Signedness.UNSIGNED)
-i16 = IntegerType(16, Signedness.UNSIGNED)
-i32 = IntegerType(32, Signedness.UNSIGNED)
-i64 = IntegerType(64, Signedness.UNSIGNED)
+i2  = IntegerType(2,  Signedness.SIGNLESS)
+i4  = IntegerType(4,  Signedness.SIGNLESS)
+i8  = IntegerType(8,  Signedness.SIGNLESS)
+i16 = IntegerType(16, Signedness.SIGNLESS)
+i32 = IntegerType(32, Signedness.SIGNLESS)
+i64 = IntegerType(64, Signedness.SIGNLESS)
 
 
 ui2  = IntegerType(2,  Signedness.UNSIGNED)
