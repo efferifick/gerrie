@@ -407,6 +407,20 @@ class TensorType(
     def get_element_type(self) -> AttributeCovT:
         return self.element_type
 
+@irdl_attr_definition
+class TokenType(ParametrizedAttribute, TypeAttribute):
+    name = "stablehlo.token"
+
+@irdl_attr_definition
+class TupleType(ParametrizedAttribute, TypeAttribute):
+    name = "stablehlo.tuple"
+    element_types: ParameterDef[ArrayAttr[TypeAttribute]]
+
+    def __init__(self, element_types):
+        super().__init__((element_types,))
+
+    # TODO: parse / print
+
 
 if __name__ == '__main__':
     unittest.main()
