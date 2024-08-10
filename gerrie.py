@@ -1,3 +1,6 @@
+import unittest
+from typing import Optional
+
 # StableHLO is an operation set for high-level operations (HLO) in machine learning (ML) models. 
 # StableHLO works as a portability layer between different ML frameworks and ML compilers:
 # ML frameworks that produce StableHLO programs are compatible with ML compilers that consume StableHLO programs.
@@ -73,7 +76,7 @@ from xdsl.dialects.func import FuncOp  # as Func
 #   Shape ::= {DimensionSize 'x'}
 #   DimensionSize ::= digit {digit} | '?'
 
-from xdsl.dialects.builtin import TensorType
+from xdsl.dialects.builtin import TensorType as BaseTensorType
 
 # Tensor types represent tensors, i.e. multidimensional arrays.
 # They have a shape and an element type, where a shape represents non-negative or unknown dimension sizes in the ascending order of the corresponding dimensions (which are also called axes) numbered from 0 to R-1
@@ -85,7 +88,195 @@ from xdsl.dialects.builtin import TensorType
 # Dynamic dimension sizes are represented using a ?. Shapes cannot be unranked.
 #
 # In the future, we are planning to explore extending tensor types beyond dimension sizes and element types, for example, to include layouts (#629) and sparsity (#1078).
-#
+
+from xdsl.ir import ParametrizedAttribute, TypeAttribute
+from xdsl.irdl import irdl_attr_definition, ParameterDef
+from xdsl.dialects.builtin import ArrayAttr, IntAttr, IntegerAttr, IntegerType, FloatAttr, AnyFloat as FloatType, NoneAttr, Signedness
+from xdsl.utils.exceptions import VerifyException
+
+def min_value(type: IntegerType) -> int:
+    width = type.width.data
+    signedness = type.signedness
+    is_signed = signedness == Signedness.SIGNED
+    exponent = width - 1 if is_signed else width
+    value = -(2 ** exponent) if is_signed else 0
+    return value
+
+def max_value(type: IntegerType) -> int:
+    width = type.width.data
+    signedness = type.signedness
+    is_signed = signedness == Signedness.SIGNED
+    exponent = width - 1 if is_signed else width
+    value = (2 ** exponent) - 1
+    return value
+
+# Quantized element types represent integer values of a storage type in the range from storage_min to storage_max (inclusive) that correspond to floating-point values of an expressed type.
+# For a given integer value i, the corresponding floating-point value f can be computed as f = (i - zero_point) * scale, where scale and zero_point are called quantization parameters.
+# The storage_min and storage_max are optional in the grammar, but have default values of min_value(storage_type) and max_value(storage_type) respectively.
+
+@irdl_attr_definition
+class QuantizedTensorElementType(ParametrizedAttribute, TypeAttribute):
+    name = "quant.uniform"
+
+    storage_type: ParameterDef[IntegerType]
+    storage_min: ParameterDef[IntegerAttr]
+    storage_max: ParameterDef[IntegerAttr]
+    expressed_type: ParameterDef[FloatType]
+    quantization_dimension: ParameterDef[IntegerAttr|NoneAttr]
+    scales: ParameterDef[ArrayAttr[FloatAttr]]
+    zero_points: ParameterDef[ArrayAttr[IntegerAttr]]
+
+    def __init__(self
+                 , storage_type: IntegerType
+                 , expressed_type: FloatType
+                 , scales: ArrayAttr[FloatAttr]
+                 , zero_points: ArrayAttr[IntegerAttr]
+                 , storage_min: Optional[IntegerAttr] = None
+                 , storage_max: Optional[IntegerAttr] = None
+                 , quantization_dimension: Optional[IntegerAttr|NoneAttr] = None):
+        storage_min = self.get_storage_min(storage_type, storage_min)
+        storage_max = self.get_storage_max(storage_type, storage_max)
+        quantization_dimension = self.get_quantization_dimension(quantization_dimension)
+        params = (storage_type
+                  , storage_min
+                  , storage_max
+                  , expressed_type
+                  , quantization_dimension
+                  , scales
+                  , zero_points)
+        super().__init__(params)
+
+
+    @staticmethod
+    def get_storage_min(storage_type: IntegerType, user_storage_min: Optional[IntegerAttr] = None) -> IntegerAttr:
+        # The storage_min is optional in the grammar.
+        if user_storage_min is not None:
+            return user_storage_min
+
+        # but has default value of min_value(storage_type)
+        storage_min = min_value(storage_type)
+        return IntegerAttr(storage_min, storage_type)
+
+    @staticmethod
+    def get_storage_max(storage_type: IntegerType, user_storage_max: Optional[IntegerAttr] = None) -> IntegerAttr:
+        # The storage_min is optional in the grammar.
+        if user_storage_max is not None:
+            return user_storage_max
+
+        # but has default value of max_value(storage_type)
+        storage_max = max_value(storage_type)
+        return IntegerAttr(storage_max, storage_type)
+
+    @staticmethod
+    def get_quantization_dimension(user_dimension: Optional[IntegerAttr|NoneAttr]):
+        match user_dimension:
+            case None:
+                return NoneAttr()
+        return user_dimension
+
+    @staticmethod
+    def C1(storage_min, storage_type):
+        """(C1) type(storage_min) = storage_type."""
+        is_satisfied = storage_min.type == storage_type
+        err_msg = "Constrain C1 type(storage_min) = storage_type is not satisfied"
+        match is_satisfied:
+            case False:
+                raise VerifyException(err_msg)
+
+    @staticmethod
+    def C2(storage_max, storage_type):
+        """(C2) type(storage_min) = storage_type."""
+        is_satisfied = storage_max.type == storage_type
+        err_msg = "Constrain C2 type(storage_max) = storage_type is not satisfied"
+        match is_satisfied:
+            case False:
+                raise VerifyException(err_msg)
+
+    @staticmethod
+    def C3(storage_type, storage_min, storage_max):
+        """(C3) min_value(storage_type) <= storage_min < storage_max <= max_value(storage_type)"""
+        storage_min = storage_min.value.data
+        storage_max = storage_max.value.data
+        if not (min_value(storage_type) <= storage_min < storage_max <= max_value(storage_type)):
+            err_msg = """(C3) min_value(storage_type) <= storage_min < storage_max <= max_value(storage_type)"""
+            raise VerifyException(err_msg)
+
+    @staticmethod
+    def C4(scales, expressed_type):
+        for scale in scales.data:
+            if scale.type != expressed_type:
+                raise VerifyException("C4")
+
+    @staticmethod
+    def C5(scales):
+        for scale in scales.data:
+            if not (0.0 < scale.value.data):
+                raise VerifyException("C5")
+
+    @staticmethod
+    def C6(scales):
+        from math import isfinite
+        for scale in scales.data:
+            scale = scale.value.data
+            if not (isfinite(scale)):
+                raise VerifyException("C6")
+
+    @staticmethod
+    def C7(storage_min, storage_max, zero_points):
+        storage_min = storage_min.value.data
+        storage_max = storage_max.value.data
+        zero_points = zero_points.data
+        for zero_point in zero_points:
+            zero_point = zero_point.value.data
+            if not (storage_min <= zero_point <= storage_max):
+                raise VerifyException("C7")
+
+    @staticmethod
+    def C8(zero_points, storage_type):
+        zero_points = zero_points.data
+        for zero_point in zero_points:
+            if not (zero_point.type == storage_type):
+                raise VerifyException("C8")
+
+    @staticmethod
+    def C9(scales, zero_points):
+        scales = scales.data
+        zero_points = zero_points.data
+        if not (len(scales) == len(zero_points)):
+            raise VerifyException("C9")
+
+    @staticmethod
+    def C10(quantization_dimension, scales):
+        is_empty = isinstance(quantization_dimension, NoneAttr)
+        if is_empty:
+            scales = scales.data
+            if not (len(scales) == 1):
+                raise VerifyException("C10")
+
+    @staticmethod
+    def C11(quantization_dimension):
+        is_empty = isinstance(quantization_dimension, NoneAttr)
+        if not is_empty:
+            quantization_dimension = quantization_dimension.value.data
+            if not (0 <= quantization_dimension):
+                raise VerifyException("C11")
+
+    def verify_(self):
+        self.C1(self.storage_min, self.storage_type)
+        self.C2(self.storage_max, self.storage_type)
+        self.C3(self.storage_type, self.storage_min, self.storage_max)
+        self.C4(self.scales, self.expressed_type)
+        self.C5(self.scales)
+        self.C6(self.scales)
+        self.C7(self.storage_min, self.storage_max, self.zero_points)
+        self.C8(self.zero_points, self.storage_type)
+        self.C9(self.scales, self.zero_points)
+        self.C10(self.quantization_dimension, self.scales)
+        self.C11(self.quantization_dimension)
+
+    # TODO: parse_parameters
+    # TODO: print_parameters
+
 #   QuantizedTensorType ::= 'tensor' '<' Shape QuantizedTensorElementType '>'
 #   QuantizedTensorElementType ::= '!quant.uniform' '<'
 #                     QuantizationStorageType
@@ -103,137 +294,119 @@ from xdsl.dialects.builtin import TensorType
 #   QuantizationParameter ::= QuantizationScale ':' QuantizationZeroPoint
 #   QuantizationScale ::= FloatConstant
 #   QuantizationZeroPoint ::= IntegerConstant
-#
-from xdsl.ir import Attribute, Data, ParametrizedAttribute, TypeAttribute
-from xdsl.irdl import ParameterDef, irdl_attr_definition
-from xdsl.dialects.builtin import FloatAttr, IntegerType, IntAttr
-from xdsl.dialects.builtin import AnyFloat as FloatType
-from xdsl.dialects.builtin import i64, f64
-from xdsl.dialects.builtin import Signedness
+
+class TestC1(unittest.TestCase):
+
+    def test_C1_passes(self):
+        from xdsl.dialects.builtin import i16
+        values = [IntegerAttr(2, i16)]
+        types = [i16]
+        for value, type in zip(values, types):
+            with self.subTest(value=value, type=type):
+                QuantizedTensorElementType.C1(value, type)
+
+    def test_C1_errors(self):
+        from xdsl.dialects.builtin import i16, i32
+        values = [IntegerAttr(2, i16)]
+        types = [i32]
+        for value, type in zip(values, types):
+            with self.subTest(value=value, type=type):
+                with self.assertRaises(VerifyException):
+                    QuantizedTensorElementType.C1(value, type)
+
+class TestC3(unittest.TestCase):
+
+    def test_C3_passes(self):
+        from xdsl.dialects.builtin import i16
+        min = IntegerAttr(0, i16)
+        max = IntegerAttr(1, i16)
+        QuantizedTensorElementType.C3(i16, min, max)
+
+    def test_C3_min_lower(self):
+        from xdsl.dialects.builtin import i16,IntegerType
+        si16 = IntegerType(16, Signedness.SIGNED)
+        min = IntegerAttr(-1, si16)
+        max = IntegerAttr(1, si16)
+        with self.assertRaises(VerifyException):
+            QuantizedTensorElementType.C3(i16, min, max)
+
+    def test_C3_min_larger_than_max(self):
+        from xdsl.dialects.builtin import i16
+        min = IntegerAttr(1, i16)
+        max = IntegerAttr(0, i16)
+        with self.assertRaises(VerifyException):
+            QuantizedTensorElementType.C3(i16, min, max)
+
+class TestC4(unittest.TestCase):
+
+    def test_C4_error(self):
+        from xdsl.dialects.builtin import f64, f32
+        scales = ArrayAttr([FloatAttr(0.0, f32), FloatAttr(2.0, f32)])
+        with self.assertRaises(VerifyException):
+            QuantizedTensorElementType.C4(scales, f64)
+
+class TestC6(unittest.TestCase):
+    def test_C6_error(self):
+        from xdsl.dialects.builtin import f32
+        scales = ArrayAttr([FloatAttr(float("inf"), f32), FloatAttr(2.0, f32)])
+        with self.assertRaises(VerifyException):
+            QuantizedTensorElementType.C6(scales)
+
+class TestQuantizedTensorElementType(unittest.TestCase):
+    def test_simple_initialization(self):
+        from xdsl.dialects.builtin import i16, f64
+        scales = ArrayAttr([FloatAttr(1.0, f64)])
+        zero_points = ArrayAttr([IntegerAttr(0, i16)])
+        q = QuantizedTensorElementType(i16, f64, scales, zero_points)
+        q.verify_()
+
+# Quantized tensor types represent tensors with quantized elements.
+# These tensors are exactly the same as regular tensors, except that their elements have quantized element types, instead of regular element types.
+# In quantized tensors, quantization can be per-tensor, meaning, having one scale and zero_point for the entire tensor or can be per-axis, meaning, having multiple scales and zero_points, one pair per slice of a particular dimension quantization_dimension.
+# More formally, in a tensor t with per-axis quantization, there are dim(t, quantization_dimension) slices of the quantization_dimension: t[:, ..., 0, ..., :], t[:, ..., 1, ..., :], etc.
+# All elements in the ith slice use scales[i] and zero_points[i] as their quantization parameters.
+
+from collections.abc import Iterable
+from typing import Generic
+from xdsl.ir import Attribute, AttributeCovT
+from xdsl.dialects.builtin import ContainerType, ShapedType
 
 @irdl_attr_definition
-class _QuantizationParameter(TypeAttribute, ParametrizedAttribute):
-    name = "quant.param"
-    quantization_expressed_type: ParameterDef[FloatType]
-    quantization_scale: ParameterDef[FloatAttr]
-    quantization_storage_type: ParameterDef[IntegerType]
-    quantization_zero_point: ParameterDef[IntAttr]
+class TensorType(
+    Generic[AttributeCovT],
+    ParametrizedAttribute,
+    TypeAttribute,
+    ShapedType,
+    ContainerType[AttributeCovT],
+):
+    name = "tensor"
 
-    def __init__(self
-                 , quantization_scale
-                 , quantization_zero_point
-                 , quantization_expressed_type = f64
-                 , quantization_storage_type = i64):
-        if isinstance(quantization_scale, float):
-            quantization_scale = FloatAttr(quantization_scale, quantization_expressed_type)
-        if isinstance(quantization_zero_point, int):
-            quantization_zero_point = IntAttr(quantization_zero_point)
-        params = [quantization_expressed_type, quantization_scale, quantization_storage_type, quantization_zero_point]
-        super().__init__(params)
+    shape: ParameterDef[ArrayAttr[IntAttr]]
+    element_type: ParameterDef[AttributeCovT]
+    encoding: ParameterDef[Attribute]
+    quantized_tensor_element_type: ParameterDef[QuantizedTensorElementType|NoneAttr]
 
-from xdsl.parser import AttrParser
-from xdsl.printer import Printer
+    def __init__(
+        self,
+        element_type: AttributeCovT,
+        shape: Iterable[int | IntAttr],
+        encoding: Attribute = NoneAttr(),
+        quantized_tensor_element_type: Attribute = NoneAttr(),
+    ):
+        shape = ArrayAttr(
+            [IntAttr(dim) if isinstance(dim, int) else dim for dim in shape]
+        )
+        super().__init__([shape, element_type, encoding, quantized_tensor_element_type])
 
-@irdl_attr_definition
-class QuantizedTensorElementType(Data, TypeAttribute):
-    name = "quant.uniform"
-    quantization_storage_type: IntegerType
-    quantization_storage_min: IntAttr
-    quantization_storage_max: IntAttr
-    quantization_expressed_type: FloatType
-    quantized_dimension: IntAttr
-    quantization_parameters: list[tuple[float, int]]
+    def get_num_dims(self) -> int:
+        return len(self.shape.data)
 
+    def get_shape(self) -> tuple[int, ...]:
+        return tuple(i.data for i in self.shape.data)
 
-    def __init__(self
-                 , quantization_parameters
-                 , quantization_storage_type = i64
-                 , quantization_storage_min = None
-                 , quantization_storage_max = None
-                 , quantization_expressed_type = f64
-                 , quantized_dimension = None):
-
-        assert isinstance(quantization_parameters, list)
-
-        signedness = quantization_storage_type.signedness
-        width = quantization_storage_type.width.data
-        is_signed = signedness == Signedness.SIGNED
-        signedwidth = width - 1 if signedness == Signedness.SIGNED else width
-
-        if quantization_storage_min is None:
-            quantization_storage_min = 2**signedwidth if is_signed else 0
-        if quantization_storage_max is None:
-            quantization_storage_max = 2**signedwidth - 1
-
-        if isinstance(quantization_storage_min, int):
-            quantization_storage_min = IntAttr(quantization_storage_min)
-        if isinstance(quantization_storage_max, int):
-            quantization_storage_max = IntAttr(quantization_storage_max)
-
-        self.quantization_storage_type = quantization_storage_type
-        self.quantization_storage_min = quantization_storage_min
-        self.quantization_storage_max = quantization_storage_max
-        self.quantization_expressed_type = quantization_expressed_type
-        self.quantized_dimension = quantized_dimension
-        self.quantization_parameters = quantization_parameters
-
-    @classmethod
-    def parse_parameter(cls, parser: AttrParser) -> list[Attribute]:
-        with parser.in_angle_brackets():
-            quantization_storage_type = parser.parse_attribute()
-        return [quantization_storage_type]
-    
-    def print_parameter(self, printer: Printer) -> None:
-        def print_intattr_data(arg: IntAttr):
-            printer.print_string(f"{arg.data}")
-
-        def print_quantization_parameter(param: tuple[float, int]):
-            printer.print_string(f"{param[0]} : {param[1]}")
-
-        with printer.in_angle_brackets():
-            printer.print_attribute(self.quantization_storage_type)
-            with printer.in_angle_brackets():
-                printer.print_list([self.quantization_storage_min, self.quantization_storage_max], print_intattr_data)
-            printer.print_string(":")
-            printer.print_attribute(self.quantization_expressed_type)
-            if self.quantized_dimension:
-                printer.print_string(":")
-                printer.print_intattr_data(self.quantized_dimension)
-            printer.print(",")
-            if len(self.quantization_parameters) == 1:
-                print_quantization_parameter(self.quantization_parameters[0])
-            else:
-                printer.print_string("{")
-                printer.print_list(self.quantization_parameters, print_quantization_parameter)
-                printer.print_string("}")
-
-q = QuantizedTensorElementType([(0.0, 0), (1.0, 1)])
-print(q)
-
-del ParametrizedAttribute, TypeAttribute
-del ParameterDef, irdl_attr_definition
-del FloatAttr, IntegerType, IntAttr
-del FloatType
-del i64, f64
+    def get_element_type(self) -> AttributeCovT:
+        return self.element_type
 
 
-
-#
-# Token types represent tokens, i.e. opaque values produced and consumed by some operations.
-# Tokens are used for imposing execution order on operations as described in the Execution section.
-
-from xdsl.ir import Data, TypeAttribute
-from xdsl.irdl import irdl_attr_definition
-
-@irdl_attr_definition
-class TokenType(Data, TypeAttribute):
-    name = "stablehlo.token"
-
-    def __init__(self):
-        super().__init__(None)
-
-    @classmethod
-    def parse_parameter(cls, parser): ...
-
-    def print_parameter(self, printer): ...
-
+if __name__ == '__main__':
+    unittest.main()
